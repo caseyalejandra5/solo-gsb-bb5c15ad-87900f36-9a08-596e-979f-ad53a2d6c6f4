@@ -4,7 +4,8 @@ import { LoopPlayer } from './audio/player';
 import { decodeAudioFile } from './audio/decode';
 import { findBestSeam, type SeamResult } from './audio/loopFinder';
 import { buildLoopPcm } from './audio/loopBuffer';
-import { fmtTime } from './utils/format';
+import { encodeWav, wavFileSize } from './audio/wavExport';
+import { fmtBytes, fmtTime } from './utils/format';
 
 const SLOPE_WINDOW = 32;
 const SLOPE_WEIGHT = 1;
@@ -187,8 +188,34 @@ export default function App() {
     setStatus('已导出 JSON（包含最终起止时间与搜索参数）。');
   }, [buffer, selection, seam, fileName, radiusMs, crossfadeMs]);
 
+  const exportWav = useCallback(() => {
+    if (!buffer || !seam) return;
+    const pcm = buildLoopPcm(buffer, seam.startSample, seam.endSample, (crossfadeMs / 1000) * buffer.sampleRate);
+    const wav = encodeWav(pcm);
+    const blob = new Blob([wav], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${fileName.replace(/\.[^.]+$/, '') || 'loop'}.loop.wav`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus(`已导出 WAV：16-bit PCM，含 smpl 循环区块（0 → 最后一帧），共 ${fmtBytes(wav.byteLength)}。`);
+  }, [buffer, seam, crossfadeMs, fileName]);
+
   const seamStale = seam !== null && seamRadiusMs !== null && seamRadiusMs !== radiusMs;
   const sr = buffer?.sampleRate ?? 44100;
+
+  // 导出 WAV 的帧数与预计大小（与 buildLoopPcm 的边界夹取逻辑保持一致；
+  // 交叉淡化只改写接缝区域，不改变总帧数）
+  let wavFrames = 0;
+  let wavBytes = 0;
+  if (buffer && seam) {
+    const len = buffer.length;
+    const s = Math.max(0, Math.min(Math.round(seam.startSample), len - 2));
+    const e = Math.max(s + 2, Math.min(Math.round(seam.endSample), len));
+    wavFrames = e - s;
+    wavBytes = wavFileSize(wavFrames, buffer.numberOfChannels);
+  }
 
   return (
     <div className="app">
@@ -271,7 +298,16 @@ export default function App() {
               </button>
               <button onClick={stopPlayback} disabled={playing === null}>停止</button>
               <button onClick={exportJson} disabled={!seam || !selection}>下载 JSON</button>
+              <button onClick={exportWav} disabled={!seam}>下载 WAV</button>
             </div>
+
+            {seam && buffer && (
+              <p className="export-info">
+                WAV 导出：{buffer.sampleRate} Hz · {buffer.numberOfChannels} 声道 ·{' '}
+                {wavFrames.toLocaleString()} 帧 · 预计 {fmtBytes(wavBytes)}
+                （16-bit PCM，含 smpl 循环区块）
+              </p>
+            )}
           </section>
 
           <section className="panel info">
