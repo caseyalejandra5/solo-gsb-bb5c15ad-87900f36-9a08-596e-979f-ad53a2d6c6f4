@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Waveform, type Region } from './components/Waveform';
 import { LoopPlayer } from './audio/player';
 import { decodeAudioFile } from './audio/decode';
 import { findBestSeam, type SeamResult } from './audio/loopFinder';
 import { buildLoopPcm } from './audio/loopBuffer';
-import { fmtTime } from './utils/format';
+import { encodeLoopWav, wavByteLength } from './audio/wav';
+import { fmtTime, fmtBytes } from './utils/format';
 
 const SLOPE_WINDOW = 32;
 const SLOPE_WEIGHT = 1;
@@ -187,8 +188,44 @@ export default function App() {
     setStatus('已导出 JSON（包含最终起止时间与搜索参数）。');
   }, [buffer, selection, seam, fileName, radiusMs, crossfadeMs]);
 
+  /** 按当前交叉淡化构造最终循环 PCM，导出 16-bit WAV（含 smpl 循环区块） */
+  const exportWav = useCallback(() => {
+    if (!buffer) return;
+    let s = seam;
+    if (!s || seamRadiusMs !== radiusMs) {
+      s = runSearch();
+    }
+    if (!s) return;
+    const pcm = buildLoopPcm(buffer, s.startSample, s.endSample, (crossfadeMs / 1000) * buffer.sampleRate);
+    const wav = encodeLoopWav(pcm);
+    const blob = new Blob([wav], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${fileName.replace(/\.[^.]+$/, '') || 'loop'}.loop.wav`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus(
+      `已导出 WAV：${pcm.sampleRate} Hz / ${pcm.channels.length} 声道 / ${pcm.channels[0].length} 帧，` +
+        'smpl 循环点 0 → 最后一帧。',
+    );
+  }, [buffer, seam, seamRadiusMs, radiusMs, crossfadeMs, fileName, runSearch]);
+
   const seamStale = seam !== null && seamRadiusMs !== null && seamRadiusMs !== radiusMs;
   const sr = buffer?.sampleRate ?? 44100;
+
+  // WAV 导出预览：最终循环 PCM 的采样率 / 声道数 / 帧数 / 预计文件大小
+  const wavPreview = useMemo(() => {
+    if (!buffer || !seam) return null;
+    const frames = seam.endSample - seam.startSample;
+    const channels = buffer.numberOfChannels;
+    return {
+      sampleRate: buffer.sampleRate,
+      channels,
+      frames,
+      bytes: wavByteLength(frames, channels),
+    };
+  }, [buffer, seam]);
 
   return (
     <div className="app">
@@ -302,6 +339,19 @@ export default function App() {
             {seam && (
               <p className="cost">接缝代价：{seam.cost.toFixed(4)}（越小越平滑） · 淡化 {crossfadeMs} ms · 半径 {seamRadiusMs} ms</p>
             )}
+
+            <div className="wav-export">
+              <div className="wav-meta">
+                <span>采样率 <b>{wavPreview ? `${wavPreview.sampleRate} Hz` : '—'}</b></span>
+                <span>声道 <b>{wavPreview ? wavPreview.channels : '—'}</b></span>
+                <span>帧数 <b>{wavPreview ? wavPreview.frames.toLocaleString() : '—'}</b></span>
+                <span>预计大小 <b>{wavPreview ? fmtBytes(wavPreview.bytes) : '—'}</b></span>
+                <em className="wav-note">16-bit WAV，内含 smpl 循环区块（0 → 最后一帧）</em>
+              </div>
+              <button className="primary" onClick={exportWav} disabled={!wavPreview}>
+                {seamStale && wavPreview ? '重新查找并下载 WAV' : '下载 WAV'}
+              </button>
+            </div>
           </section>
         </>
       )}

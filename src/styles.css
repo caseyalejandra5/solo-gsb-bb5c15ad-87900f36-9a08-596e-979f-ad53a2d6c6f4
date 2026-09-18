@@ -202,6 +202,38 @@ button.active {
   color: #9aa7bd;
 }
 
+.wav-export {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #232c40;
+}
+
+.wav-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: #9aa7bd;
+}
+
+.wav-meta b {
+  color: #e6ebf5;
+  font-weight: 600;
+}
+
+.wav-meta .wav-note {
+  font-style: normal;
+  font-size: 12px;
+  color: #5c6a85;
+  flex-basis: 100%;
+}
+
 .status {
   font-size: 13px;
   color: #9fc0ff;

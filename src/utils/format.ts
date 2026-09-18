@@ -12,3 +12,9 @@ export function fmtTick(sec: number): string {
   const s = Math.floor(sec - m * 60);
   return `${m}:${String(s).padStart(2, '0')}`;
 }
+
+/** 字节数 → "x KB / x.x MB"（预计文件大小用） */
+export function fmtBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(0, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
